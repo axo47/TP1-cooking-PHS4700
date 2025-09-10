@@ -5,44 +5,35 @@
 % va     : vitesse angulaire ω (3x1)
 % Forces : [F_moteurDroit; F_moteurGauche; Portance] (3x1 ou 1x3)
 function [pcm, MI, aa] = Dev1(posA, ar, va, Forces)
-    % Rendre les constantes visibles ici (fidèle à ta structure)
-    global LONGUEUR_MOTEUR RAYON_FUSELAGE RAYON_MOTEUR EPAISSEUR_AILE
+    % -- paramètres (constantes + inerties) --
+    P = avionParams();  % regroupe toutes tes constantes d'origine
 
-    % Petites sécurités sur les entrées (sans changer ton API)
-    assert(isvector(posA) && numel(posA)==3, 'posA doit être 3x1.');
-    assert(isvector(va)   && numel(va)==3,   'va (ω) doit être 3x1.');
-    Forces = Forces(:);
-    assert(numel(Forces)==3, 'Forces doit contenir [F_droit, F_gauche, Portance].');
+    % -- centre de masse global + sous-parties --
+    [pcm, partieAvion] = calculCentreMasse(posA, P);
 
-    % Centre de masse global + liste des sous-parties
-    [pcm, partieAvion] = calculCentreMasse(posA);
-
-    % Axe x du repère corps (pour pousser les moteurs)
+    % -- direction de poussée (axe x du corps), rotation autour de y --
     ux = [1;0;0];
-
-    % Rotation autour de y si ar ~= 0
     if abs(ar) > eps
         R = [ cos(ar), 0,  sin(ar); ...
               0,       1,  0; ...
              -sin(ar), 0,  cos(ar) ];
-        % Rotation positions et inerties autour de pcm
         for k = 1:numel(partieAvion)
             partieAvion(k).r   = pcm + R*(partieAvion(k).r - pcm);
             partieAvion(k).Icm = R * partieAvion(k).Icm * R.';  % I' = R I R^T
         end
-        ux = R*ux;  % direction de poussée après rotation
+        ux = R*ux;
     end
 
-    % Récup des centres de masse utiles
+    % -- récup centres de masse utiles --
     names = {partieAvion.name};
-    centreMasseMoteurDroit = partieAvion(strcmp(names,"moteur_droit")).r;
-    centreMasseMoteurGauche= partieAvion(strcmp(names,"moteur_gauche")).r;
-    centreMasseAileDroite  = partieAvion(strcmp(names,"aile_droite")).r;
-    centreMasseAileGauche  = partieAvion(strcmp(names,"aile_gauche")).r;
+    centreMasseMoteurDroit  = partieAvion(strcmp(names,"moteur_droit")).r;
+    centreMasseMoteurGauche = partieAvion(strcmp(names,"moteur_gauche")).r;
+    centreMasseAileDroite   = partieAvion(strcmp(names,"aile_droite")).r;
+    centreMasseAileGauche   = partieAvion(strcmp(names,"aile_gauche")).r;
 
-    % Points d’application des forces
-    centreMasseMoteurDroitApplique  = centreMasseMoteurDroit  - (LONGUEUR_MOTEUR/2)*ux;
-    centreMasseMoteurGaucheApplique = centreMasseMoteurGauche - (LONGUEUR_MOTEUR/2)*ux;
+    % -- points d’application des forces --
+    centreMasseMoteurDroitApplique  = centreMasseMoteurDroit  - (P.LONGUEUR_MOTEUR/2)*ux;
+    centreMasseMoteurGaucheApplique = centreMasseMoteurGauche - (P.LONGUEUR_MOTEUR/2)*ux;
     centreMasseForcePorteeApplique  = 0.5*(centreMasseAileDroite + centreMasseAileGauche);
     centreMasseForcePorteeApplique  = [centreMasseForcePorteeApplique(1); centreMasseForcePorteeApplique(2); 0];
 
@@ -52,19 +43,19 @@ function [pcm, MI, aa] = Dev1(posA, ar, va, Forces)
         centreMasseForcePorteeApplique ...
     });
 
-    % Forces (colonnes)
+    % -- forces (colonnes) --
     forceMoteurDroit  = Forces(1)*ux;
     forceMoteurGauche = Forces(2)*ux;
     ForcePorte        = [0;0;Forces(3)];
     F = [forceMoteurDroit, forceMoteurGauche, ForcePorte];
 
-    % Inertie totale au pcm (théorème des axes parallèles)
+    % -- inertie totale au pcm (axes parallèles) --
     MI = calculInertie(partieAvion, pcm);
 
-    % Moments et accélération angulaire (Euler : τ = Iα + ω×(Iω))
+    % -- dynamique d’Euler : τ = Iα + ω×(Iω) -> α = I^{-1}(τ - ω×(Iω)) --
     momentTotal     = calculMomentForce(pts, F, pcm);
-    momentCinetique = MI * va;                     % Iω
-    aa = MI \ (momentTotal + cross(momentCinetique, va)); 
+    momentCinetique = MI * va;
+    aa = MI \ (momentTotal + cross(momentCinetique, va)); % == τ - ω×(Iω)
 end
 
 
