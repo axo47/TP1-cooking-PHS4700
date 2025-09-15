@@ -70,7 +70,12 @@ function momentTotal = calculMomentForce(vecteurPosForce, F, pcm)
 end
 
 
-function [pcm, partieAvion] = calculCentreMasse(posA)
+function [pcm, partieAvion] = calculCentreMasse(posA, P)
+
+    P = avionParams();  % regroupe toutes tes constantes d'origine
+
+
+    
     % Rendre visibles toutes les constantes et inerties
     global MASSE_CABINE RAYON_FUSELAGE HAUTEUR_CABINE ...
            LONGUEUR_FUSELAGE MASSE_FUSELAGE ...
