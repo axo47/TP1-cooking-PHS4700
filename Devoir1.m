@@ -10,53 +10,30 @@ function [pcm, MI, aa] = Devoir1(posA, ar, va, Forces)
 
     % -- centre de masse global + sous-parties --
     [pcm, partieAvion] = calculCentreMasse(P);
-    pcm = pcm - posA;
 
-    % -- direction de poussée (axe x du corps), rotation autour de y --
-    ux = [1;0;0];
-    if abs(ar) > eps
-        R = [ cos(ar), 0,  sin(ar); ...
-              0,       1,  0; ...
-             -sin(ar), 0,  cos(ar) ];
-        for k = 1:numel(partieAvion)
-            partieAvion(k).r   = R*(partieAvion(k).r - posA) + posA;
-            partieAvion(k).Icm = R * partieAvion(k).Icm * R.';  % I' = R I R^T
-        end
-        ux = R*ux;
-    end
+    R = [ cos(ar), 0,  sin(ar); ...
+            0,       1,  0; ...
+        -sin(ar), 0,  cos(ar) ];
 
-    % -- récup centres de masse utiles --
-    names = {partieAvion.name};
+    r_0_global = posA - R * posA 
+    pcm = r_0_global + R*pcm
 
-    for i = 1:length(names)
-        fprintf('  %d: "%s" (classe: %s)\n', i, names{i}, class(names{i}));
-    end
-    
-    % Vérifiez les comparaisons
-    comparison = strcmp(names,"moteur_droit");
-    fprintf('Résultat strcmp pour moteur_droit: %s\n', mat2str(comparison));
-    fprintf('Somme des matches: %d\n', sum(comparison));
-
-    centreMasseMoteurDroit  = partieAvion(strcmp(names,'moteur_droit')).r;
-    centreMasseMoteurGauche = partieAvion(strcmp(names,'moteur_gauche')).r;
-    centreMasseAileDroite   = partieAvion(strcmp(names,'aile_droite')).r;
-    centreMasseAileGauche   = partieAvion(strcmp(names,'aile_gauche')).r;
 
     % -- points d'application des forces --
-    centreMasseMoteurDroitApplique  = centreMasseMoteurDroit  - (P.LONGUEUR_MOTEUR/2)*ux;
-    centreMasseMoteurGaucheApplique = centreMasseMoteurGauche - (P.LONGUEUR_MOTEUR/2)*ux;
-    centreMasseForcePorteeApplique  = 0.5*(centreMasseAileDroite + centreMasseAileGauche);
-    centreMasseForcePorteeApplique  = [centreMasseForcePorteeApplique(1); centreMasseForcePorteeApplique(2); 0];
+    positionMoteurDroitApplique  = r_0_global + R * [5 - P.LONGUEUR_MOTEUR/2; +(P.RAYON_FUSELAGE+P.RAYON_MOTEUR); P.RAYON_FUSELAGE+P.EPAISSEUR_AILE];
+    positionMoteurGaucheApplique = r_0_global + R * [5 - P.LONGUEUR_MOTEUR/2; -(P.RAYON_FUSELAGE+P.RAYON_MOTEUR); P.RAYON_FUSELAGE+P.EPAISSEUR_AILE];
+    positionforcePorteeApplique  = r_0_global + R *[P.CENTRE_X_AILE; 0; 0]; 
+
 
     pts = struct('pos',{ ...
-        centreMasseMoteurDroitApplique, ...
-        centreMasseMoteurGaucheApplique, ...
-        centreMasseForcePorteeApplique ...
+        positionMoteurDroitApplique, ...
+        positionMoteurGaucheApplique, ...
+        positionforcePorteeApplique ...
     });
 
     % -- forces (colonnes) --
-    forceMoteurDroit  = Forces(1)*ux;
-    forceMoteurGauche = Forces(2)*ux;
+    forceMoteurDroit  = Forces(1)*[1;0;0];
+    forceMoteurGauche = Forces(2)*[1;0;0];
     ForcePorte        = [0;0;Forces(3)];
     F = [forceMoteurDroit, forceMoteurGauche, ForcePorte];
 
@@ -83,14 +60,10 @@ end
 
 function [pcm, partieAvion] = calculCentreMasse(P)
     % Centres de masse individuels (dans le repère monde)
-    cabineCentreMasse      =  [ P.LONGUEUR_FUSELAGE ; 0;P.EPAISSEUR_AILE+RAYON_CABINE] + (1/4) * [P.HAUTEUR_CABINE;0;0]  ;
-
-    fuselageCentreMasse    =  [P.LONGUEUR_FUSELAGE/2; 0; EPAISSEUR_AILE+RAYON_CABINE];
-
+    cabineCentreMasse      =  [ P.LONGUEUR_FUSELAGE ; 0;P.P.EPAISSEUR_AILE+P.RAYON_CABINE] + (1/4) * [P.HAUTEUR_CABINE;0;0]  ;
+    fuselageCentreMasse    =  [P.LONGUEUR_FUSELAGE/2; 0; P.EPAISSEUR_AILE+P.RAYON_CABINE];
     ailesCentreMasse = [P.CENTRE_X_AILE; 0; P.EPAISSEUR_AILE/2];
-
     moteurCentreMasse= [5;0; 2*(P.RAYON_FUSELAGE + P.EPAISSEUR_AILE)];
-
     AileronCentreMasse     = [P.LARGEUR_AILERON/2; 0; (2*P.RAYON_FUSELAGE)+P.EPAISSEUR_AILE];
 
     % Barycentre global (ajout du fuselage)
@@ -105,12 +78,13 @@ function [pcm, partieAvion] = calculCentreMasse(P)
 
     % Liste des sous-parties (positions au CM propre + inertie au CM propre)
     partieAvion = [ ...
-        struct('name', 'cabine',        'm',P.MASSE_CABINE,   'r',cabineCentreMasse,       'Icm',P.INERTIE_CENTRE_CABINE), ...
-        struct('name','fuselage',      'm',P.MASSE_FUSELAGE, 'r',fuselageCentreMasse,     'Icm',P.INTERTIE_CENTRE_FUSELAGE), ...
-        struct('name','aile',   'm',P.MASSE_AILE,     'r',ailesCentreMasse,  'Icm',     P.INTERTIE_CENTRE_AILE), ...
-        struct('name','moteur',  'm',P.MASSE_MOTEUR,   'r',moteurCentreMasse, 'Icm',P.INTERTIE_CENTRE_MOTEUR), ...
-        struct('name','aileron',       'm',P.MASSE_AILERON,  'r',AileronCentreMasse,      'Icm',P.INTERTIE_CENTRE_AILERON) ...
+        struct('name','cabine','m',P.MASSE_CABINE,'r',cabineCentreMasse,'Icm',P.INERTIE_CENTRE_CABINE), ...
+        struct('name','fuselage','m',P.MASSE_FUSELAGE,'r',fuselageCentreMasse,'Icm',P.INTERTIE_CENTRE_FUSELAGE), ...
+        struct('name','ailes','m',P.MASSE_AILE,'r',ailesCentreMasse,'Icm',P.INTERTIE_CENTRE_AILE), ...
+        struct('name','moteurs','m',P.MASSE_MOTEUR,'r',moteurCentreMasse,'Icm',P.INTERTIE_CENTRE_MOTEUR), ...
+        struct('name','aileron','m',P.MASSE_AILERON,'r',AileronCentreMasse,'Icm',P.INTERTIE_CENTRE_AILERON) ...
     ];
+
 end
 
 
